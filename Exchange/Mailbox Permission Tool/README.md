@@ -42,3 +42,6 @@ Useful for administrators who manage shared mailboxes across organizations and w
    ```powershell
    $$sharedMailboxes = @(
     "mailbox1@email.com",
+
+## [OPTIONAL]
+Use PS2EXE to package this as an executable.
