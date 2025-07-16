@@ -72,7 +72,7 @@ Terminal output confirms each account unlocked, showing both display name and Sa
 
 ---
 
-## [OPTIONAL]
+## Optional
 Use PS2EXE to package this as an executable.
 
 ---
