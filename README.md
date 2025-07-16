@@ -12,6 +12,9 @@ A growing collection of PowerShell scripts focused on system administration, net
 - [Exchange Scripts](https://github.com/JesseKozeluh/PowerShell/tree/main/Exchange)  
   Scripts for managing and auditing Microsoft Exchange environments.
 
+- [Misc Scripts](https://github.com/JesseKozeluh/PowerShell/tree/main/Misc)  
+  Tools and scripts for general purpose administrative tasks.
+
 - [Network Scripts](https://github.com/JesseKozeluh/PowerShell/tree/main/Network)  
   Tools and scripts for network related administrative tasks.
 
