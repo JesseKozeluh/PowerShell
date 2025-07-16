@@ -6,11 +6,14 @@ A growing collection of PowerShell scripts focused on system administration, net
 
 ## 📁 Directory Structure
 
+- [Active Directory Scripts](https://github.com/JesseKozeluh/PowerShell/tree/main/Active%20Directory)  
+  GUI-based and command-line tools for performing administative tasks in AD environments.
+
 - [Exchange Scripts](https://github.com/JesseKozeluh/PowerShell/tree/main/Exchange)  
-  Scripts for managing and auditing Microsoft Exchange environments, including mailbox permission cleanups and remote shell connections.
+  Scripts for managing and auditing Microsoft Exchange environments.
 
 - [Network Scripts](https://github.com/JesseKozeluh/PowerShell/tree/main/Network)  
-  Tools for auditing NTFS folder permissions on network shares, exporting structured reports to Excel.
+  Tools and scripts for network related administrative tasks.
 
 More directories will be added as additional tooling is developed and tested.
 
