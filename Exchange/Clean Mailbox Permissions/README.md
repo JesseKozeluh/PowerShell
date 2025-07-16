@@ -16,7 +16,8 @@ Automates the auditing and cleanup of **Send As** and **Full Access** permission
 This PowerShell script performs the following actions:
 
 - Two versions, one written for Exchange Server 2019 and the other for Exchange Online
-- Prompts for a shared mailbox email address
+- Written for shared mailboxes, but can be used for user mailboxes (doesn't handle Send-On-Behalf perms)
+- Prompts for a mailbox email address
 - Retrieves the mailbox’s Distinguished Name
 - Audits **Send-As** permissions via `Get-ADPermission`
 - Audits **Full Access** permissions via `Get-MailboxPermission`
