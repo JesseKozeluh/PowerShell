@@ -1,6 +1,6 @@
 # 📬 Clean Shared Mailbox Permissions v1.0
 
-Automates the auditing and cleanup of **Send As** and **Full Access** permissions for a specified **shared mailbox** in Microsoft Exchange. It identifies disabled users with legacy permissions and optionally removes them.
+Automates the auditing and cleanup of **Send As** and **Full Access** permissions for a specified **mailboxes** in Microsoft Exchange. It identifies disabled users with legacy permissions and optionally removes them. There are two versions, one written for Exchange Server 2019 and the other for Exchange Online.
 
 ---
 
@@ -15,7 +15,6 @@ Automates the auditing and cleanup of **Send As** and **Full Access** permission
 
 This PowerShell script performs the following actions:
 
-- Two versions, one written for Exchange Server 2019 and the other for Exchange Online
 - Written for shared mailboxes, but can be used for user mailboxes (doesn't handle Send-On-Behalf perms)
 - Prompts for a mailbox email address
 - Retrieves the mailbox’s Distinguished Name
