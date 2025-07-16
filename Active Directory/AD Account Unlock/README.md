@@ -57,6 +57,9 @@ To delegate unlock permissions to a non-domain admin user:
 
 This ensures the user can query and modify lockout status without full admin rights.
 
+[OPTIONAL]
+Use PS2EXE to package this as an executable.
+
 ---
 
 ## Usage
