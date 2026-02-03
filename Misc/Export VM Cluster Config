@@ -1,0 +1,379 @@
+<#
+.SYNOPSIS
+    Export detailed VM configuration settings from a Failover Cluster to an XLSX file
+    sufficient to recreate the VM's operational configuration.
+
+.REQUIREMENTS
+    - ImportExcel module
+    - FailoverClusters module
+    - Hyper-V module
+#>
+
+# ================================
+# CONFIGURABLE VARIABLES
+# ================================
+$ClusterName = (Get-Cluster).Name   # Auto-detect cluster name
+$ExcelSheetName = "VMConfig"        # Worksheet base name
+$AutoSizeColumns = $true            # Auto-size Excel columns
+$IncludeVMResources = $true         # Include cluster resource details
+$IncludeNetworkAdapters = $true     # Include VM NIC details
+$IncludeVHDInfo = $true             # Include VHD/VHDX details
+$IncludeIntegrationServices = $true # Include VM integration services
+$IncludeSecurity = $true            # Include VM security settings
+$IncludeReplication = $true         # Include Hyper-V replication settings
+$IncludeClusterSettings = $true     # Include cluster-level VM settings
+
+# ================================
+# MODULE IMPORTS
+# ================================
+try {
+    Import-Module ImportExcel -ErrorAction Stop
+}
+catch {
+    Write-Error "The ImportExcel module is not installed. Install it using: Install-Module ImportExcel"
+    exit
+}
+
+# ================================
+# FUNCTIONS
+# ================================
+
+function Get-SaveFileDialog {
+    Add-Type -AssemblyName System.Windows.Forms
+    $dialog = New-Object System.Windows.Forms.SaveFileDialog
+    $dialog.Filter = "Excel Workbook (*.xlsx)|*.xlsx"
+    $dialog.Title = "Select location to save VM configuration export"
+    $dialog.ShowDialog() | Out-Null
+    return $dialog.FileName
+}
+
+function Get-ClusterVMs {
+    param([string]$ClusterName)
+    Get-ClusterGroup -Cluster $ClusterName |
+        Where-Object { $_.GroupType -eq "VirtualMachine" }
+}
+
+function Get-VMOwnerNode {
+    param([string]$VMName)
+    (Get-ClusterGroup -Name $VMName).OwnerNode.Name
+}
+
+function Get-VMCoreConfiguration {
+    param([string]$VMName)
+
+    $ownerNode = Get-VMOwnerNode -VMName $VMName
+    $vm = Get-VM -ComputerName $ownerNode -Name $VMName -ErrorAction Stop
+
+    $config = [ordered]@{
+        VMName                     = $vm.Name
+        VMId                       = $vm.VMId
+        OwnerNode                  = $ownerNode
+        State                      = $vm.State
+        Generation                 = $vm.Generation
+        VMVersion                  = $vm.Version
+        CPUCount                   = $vm.ProcessorCount
+        MemoryAssigned             = $vm.MemoryAssigned
+        MemoryStartup              = $vm.MemoryStartup
+        DynamicMemoryEnabled       = $vm.DynamicMemoryEnabled
+        MinMemory                  = $vm.MemoryMinimum
+        MaxMemory                  = $vm.MemoryMaximum
+        SmartPagingFilePath        = $vm.SmartPagingFilePath
+        AutomaticStartAction       = $vm.AutomaticStartAction
+        AutomaticStartDelay        = $vm.AutomaticStartDelay
+        AutomaticStopAction        = $vm.AutomaticStopAction
+        CheckpointType             = $vm.CheckpointType
+        Notes                      = $vm.Notes
+        VMPath                     = $vm.Path
+        SnapshotFileLocation       = $vm.SnapshotFileLocation
+        ConfigurationLocation      = $vm.ConfigurationLocation
+    }
+
+    [PSCustomObject]$config
+}
+
+function Get-VMProcessorConfiguration {
+    param([string]$VMName)
+
+    $ownerNode = Get-VMOwnerNode -VMName $VMName
+    $proc = Get-VMProcessor -VMName $VMName -ComputerName $ownerNode
+
+    [PSCustomObject]@{
+        VMName                          = $VMName
+        OwnerNode                       = $ownerNode
+        Count                           = $proc.Count
+        Reserve                         = $proc.Reserve
+        Maximum                         = $proc.Maximum
+        RelativeWeight                  = $proc.RelativeWeight
+        CompatibilityForMigrationEnabled= $proc.CompatibilityForMigrationEnabled
+        CompatibilityForOlderOperatingSystemsEnabled = $proc.CompatibilityForOlderOperatingSystemsEnabled
+        ExposeVirtualizationExtensions  = $proc.ExposeVirtualizationExtensions
+        HwThreadCountPerCore            = $proc.HwThreadCountPerCore
+        MaximumCountPerNumaNode         = $proc.MaximumCountPerNumaNode
+        MaximumCountPerNumaSocket       = $proc.MaximumCountPerNumaSocket
+    }
+}
+
+function Get-VMMemoryConfiguration {
+    param([string]$VMName)
+
+    $ownerNode = Get-VMOwnerNode -VMName $VMName
+    $mem = Get-VMMemory -VMName $VMName -ComputerName $ownerNode
+
+    [PSCustomObject]@{
+        VMName               = $VMName
+        OwnerNode            = $ownerNode
+        DynamicMemoryEnabled = $mem.DynamicMemoryEnabled
+        Startup              = $mem.Startup
+        Minimum              = $mem.Minimum
+        Maximum              = $mem.Maximum
+        Buffer               = $mem.Buffer
+        Priority             = $mem.Priority
+    }
+}
+
+function Get-VMNetworkAdaptersDetailed {
+    param([string]$VMName)
+
+    $ownerNode = Get-VMOwnerNode -VMName $VMName
+    $adapters = Get-VMNetworkAdapter -VMName $VMName -ComputerName $ownerNode
+
+    $list = @()
+    foreach ($nic in $adapters) {
+        $vlan = $nic.VlanSetting
+        $list += [PSCustomObject]@{
+            VMName                 = $VMName
+            OwnerNode              = $ownerNode
+            AdapterName            = $nic.Name
+            SwitchName             = $nic.SwitchName
+            MacAddress             = $nic.MacAddress
+            DynamicMacAddress      = $nic.DynamicMacAddressEnabled
+            MacAddressSpoofing     = $nic.MacAddressSpoofing
+            DhcpGuard              = $nic.DhcpGuard
+            RouterGuard            = $nic.RouterGuard
+            PortMirroringMode      = $nic.PortMirroringMode
+            IovWeight              = $nic.IovWeight
+            IovQueuePairsRequested = $nic.IovQueuePairsRequested
+            IovInterruptModeration = $nic.IovInterruptModeration
+            BandwidthReservation   = $nic.BandwidthReservation
+            BandwidthWeight        = $nic.BandwidthWeight
+            BandwidthMaximum       = $nic.BandwidthMaximum
+            VlanEnabled            = $vlan -ne $null -and $vlan.AccessVlanId -ne $null
+            VlanId                 = if ($vlan) { $vlan.AccessVlanId } else { $null }
+            IPAddresses            = ($nic.IPAddresses -join ',')
+            IsManagementOS         = $nic.IsManagementOS
+        }
+    }
+
+    $list
+}
+
+function Get-VMVHDInfo {
+    param([string]$VMName)
+
+    $ownerNode = Get-VMOwnerNode -VMName $VMName
+    $vm = Get-VM -Name $VMName -ComputerName $ownerNode
+    $disks = @()
+
+    foreach ($hdd in $vm.HardDrives) {
+        $vhd = Get-VHD -Path $hdd.Path -ComputerName $ownerNode
+        $disks += [PSCustomObject]@{
+            VMName        = $VMName
+            OwnerNode     = $ownerNode
+            Controller    = $hdd.ControllerType
+            ControllerNum = $hdd.ControllerNumber
+            Lun           = $hdd.ControllerLocation
+            VHDPath       = $vhd.Path
+            VHDType       = $vhd.VhdType
+            VHDFormat     = $vhd.VhdFormat
+            FileSizeGB    = [math]::Round($vhd.FileSize / 1GB, 2)
+            SizeGB        = [math]::Round($vhd.Size / 1GB, 2)
+            LogicalSectorSize = $vhd.LogicalSectorSize
+            PhysicalSectorSize= $vhd.PhysicalSectorSize
+            BlockSizeBytes    = $vhd.BlockSize
+            ParentPath        = $vhd.ParentPath
+            Fragmentation     = $vhd.FragmentationPercentage
+        }
+    }
+
+    $disks
+}
+
+function Get-VMIntegrationServices {
+    param([string]$VMName)
+
+    $ownerNode = Get-VMOwnerNode -VMName $VMName
+    $services = Get-VMIntegrationService -VMName $VMName -ComputerName $ownerNode
+
+    $services | Select-Object `
+        @{Name='VMName';Expression={$VMName}},
+        @{Name='OwnerNode';Expression={$ownerNode}},
+        Name, Enabled, PrimaryStatusDescription, SecondaryStatusDescription
+}
+
+function Get-VMSecurityConfiguration {
+    param([string]$VMName)
+
+    $ownerNode = Get-VMOwnerNode -VMName $VMName
+    $sec = Get-VMSecurity -VMName $VMName -ComputerName $ownerNode
+
+    [PSCustomObject]@{
+        VMName                    = $VMName
+        OwnerNode                 = $ownerNode
+        SecureBootEnabled         = $sec.SecureBootEnabled
+        SecureBootTemplate        = $sec.SecureBootTemplate
+        TPMEnabled                = $sec.TpmEnabled
+        Shielded                  = $sec.Shielded
+        EncryptionSupported       = $sec.EncryptionSupported
+        KeyStorageDriveEnabled    = $sec.KeyStorageDriveEnabled
+        VirtualizationBasedSecurityOptOut = $sec.VirtualizationBasedSecurityOptOut
+    }
+}
+
+function Get-VMReplicationConfiguration {
+    param([string]$VMName)
+
+    $ownerNode = Get-VMOwnerNode -VMName $VMName
+    $rep = Get-VMReplication -VMName $VMName -ComputerName $ownerNode -ErrorAction SilentlyContinue
+    if (-not $rep) { return $null }
+
+    [PSCustomObject]@{
+        VMName                 = $VMName
+        OwnerNode              = $ownerNode
+        ReplicationEnabled     = $true
+        ReplicationMode        = $rep.Mode
+        ReplicationState       = $rep.State
+        PrimaryServer          = $rep.PrimaryServer
+        ReplicaServer          = $rep.ReplicaServer
+        AuthenticationType     = $rep.AuthenticationType
+        CompressionEnabled     = $rep.CompressionEnabled
+        RecoveryHistory        = $rep.RecoveryHistory
+        ReplicationFrequencySec= $rep.ReplicationFrequencySec
+        ReplicationPort        = $rep.ReplicationPort
+        InitialReplicationMethod = $rep.InitialReplicationMethod
+    }
+}
+
+function Get-ClusterVMResourceInfo {
+    param([string]$VMName, [string]$ClusterName)
+
+    Get-ClusterResource -Cluster $ClusterName |
+        Where-Object { $_.OwnerGroup.Name -eq $VMName } |
+        Select-Object Name, ResourceType, State, OwnerNode
+}
+
+function Get-ClusterVMSettings {
+    param([string]$VMName, [string]$ClusterName)
+
+    $group = Get-ClusterGroup -Cluster $ClusterName -Name $VMName
+    $preferredOwners = ($group.PreferredOwners | ForEach-Object Name) -join ','
+    $possibleOwners  = ($group.OwnerNodes | ForEach-Object Name) -join ','
+    $antiAffinity    = ($group.AntiAffinityClassNames -join ',')
+
+    [PSCustomObject]@{
+        VMName                 = $VMName
+        ClusterName            = $ClusterName
+        GroupState             = $group.State
+        FailoverThreshold      = $group.FailoverThreshold
+        FailoverPeriod         = $group.FailoverPeriod
+        FailbackType           = $group.AutoFailbackType
+        FailbackWindowStart    = $group.FailbackWindowStart
+        FailbackWindowEnd      = $group.FailbackWindowEnd
+        PreferredOwners        = $preferredOwners
+        PossibleOwners         = $possibleOwners
+        AntiAffinityClassNames = $antiAffinity
+    }
+}
+
+# ================================
+# MAIN SCRIPT LOGIC
+# ================================
+
+Write-Host "Gathering VM configuration from cluster '$ClusterName'..."
+
+$vmGroups = Get-ClusterVMs -ClusterName $ClusterName
+
+if (-not $vmGroups) {
+    Write-Host "No virtual machines found in cluster '$ClusterName'."
+    exit
+}
+
+$vmCoreList          = @()
+$vmProcessorList     = @()
+$vmMemoryList        = @()
+$vmNICList           = @()
+$vmDiskList          = @()
+$vmResourceList      = @()
+$vmIntegrationList   = @()
+$vmSecurityList      = @()
+$vmReplicationList   = @()
+$vmClusterSettings   = @()
+
+foreach ($group in $vmGroups) {
+    $vmName = $group.Name
+    Write-Host "Processing VM: $vmName"
+
+    try {
+        $vmCoreList      += Get-VMCoreConfiguration -VMName $vmName
+        $vmProcessorList += Get-VMProcessorConfiguration -VMName $vmName
+        $vmMemoryList    += Get-VMMemoryConfiguration -VMName $vmName
+
+        if ($IncludeNetworkAdapters) {
+            $vmNICList += Get-VMNetworkAdaptersDetailed -VMName $vmName
+        }
+
+        if ($IncludeVHDInfo) {
+            $vmDiskList += Get-VMVHDInfo -VMName $vmName
+        }
+
+        if ($IncludeVMResources) {
+            $vmResourceList += Get-ClusterVMResourceInfo -VMName $vmName -ClusterName $ClusterName
+        }
+
+        if ($IncludeIntegrationServices) {
+            $vmIntegrationList += Get-VMIntegrationServices -VMName $vmName
+        }
+
+        if ($IncludeSecurity) {
+            $vmSecurityList += Get-VMSecurityConfiguration -VMName $vmName
+        }
+
+        if ($IncludeReplication) {
+            $rep = Get-VMReplicationConfiguration -VMName $vmName
+            if ($rep) { $vmReplicationList += $rep }
+        }
+
+        if ($IncludeClusterSettings) {
+            $vmClusterSettings += Get-ClusterVMSettings -VMName $vmName -ClusterName $ClusterName
+        }
+    }
+    catch {
+        Write-Warning "Failed to process VM '$vmName': $_"
+    }
+}
+
+# Prompt user for save location
+$ExcelPath = Get-SaveFileDialog
+if (-not $ExcelPath) {
+    Write-Host "No file selected. Exiting."
+    exit
+}
+
+Write-Host "Exporting to Excel: $ExcelPath"
+
+$ExcelParams = @{
+    Path     = $ExcelPath
+    AutoSize = $AutoSizeColumns
+}
+
+$vmCoreList        | Export-Excel @ExcelParams -WorksheetName "$ExcelSheetName-Core"
+$vmProcessorList   | Export-Excel @ExcelParams -WorksheetName "$ExcelSheetName-CPU"
+$vmMemoryList      | Export-Excel @ExcelParams -WorksheetName "$ExcelSheetName-Memory"
+$vmNICList         | Export-Excel @ExcelParams -WorksheetName "$ExcelSheetName-NICs"
+$vmDiskList        | Export-Excel @ExcelParams -WorksheetName "$ExcelSheetName-Disks"
+$vmResourceList    | Export-Excel @ExcelParams -WorksheetName "$ExcelSheetName-ClusterResources"
+$vmIntegrationList | Export-Excel @ExcelParams -WorksheetName "$ExcelSheetName-Integration"
+$vmSecurityList    | Export-Excel @ExcelParams -WorksheetName "$ExcelSheetName-Security"
+$vmReplicationList | Export-Excel @ExcelParams -WorksheetName "$ExcelSheetName-Replication"
+$vmClusterSettings | Export-Excel @ExcelParams -WorksheetName "$ExcelSheetName-ClusterSettings"
+
+Write-Host "Export complete!"
